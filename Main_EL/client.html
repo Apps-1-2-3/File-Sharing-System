@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure File Transfer Client</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #a8c0ff, #3f2b96); /* Blue/Purple Gradient */
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top to prevent content jump */
+            padding-top: 50px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            margin: auto;
+            background: rgba(255, 255, 255, 0.95); /* Slightly transparent white */
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            backdrop-filter: blur(5px); /* Frosted glass effect */
+            -webkit-backdrop-filter: blur(5px);
+            opacity: 0; /* Initially hidden for animation */
+            transform: translateY(20px);
+            animation: containerEnter 0.6s forwards ease-out;
+        }
+        @keyframes containerEnter {
+            to { opacity: 1; transform: translateY(0); }
+        }
+        h1, h2 {
+            color: #0056b3;
+            text-align: center;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+        .section {
+            margin-bottom: 25px;
+            padding: 20px;
+            border: 1px solid #cceeff; /* Lighter blue border */
+            border-radius: 8px;
+            background-color: #f7fcff; /* Very light blue background */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            /* Initial state for dynamic visibility */
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        /* Style for the first section always visible initially */
+        .section:not([id]) { /* Targets sections without an ID, assuming the first one */
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        input[type="text"], input[type="password"], input[type="file"], button {
+            width: calc(100% - 22px);
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #a8c0ff; /* Border matching gradient */
+            border-radius: 6px;
+            font-size: 16px;
+            box-sizing: border-box;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+        input[type="text"]:focus, input[type="password"]:focus, input[type="file"]:focus {
+            border-color: #3f2b96;
+            box-shadow: 0 0 0 3px rgba(63, 43, 150, 0.2);
+            outline: none;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        button:hover {
+            background-color: #0056b3;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .message-box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #fff;
+            margin-top: 10px;
+            border-radius: 6px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .message-box p {
+            margin: 5px 0;
+            padding: 2px 0;
+            word-wrap: break-word;
+        }
+        .client-list { margin-top: 10px; }
+        .client-item {
+            padding: 8px 0;
+            border-bottom: 1px dashed #eee;
+            font-size: 1.1em;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .client-item:last-child {
+            border-bottom: none;
+        }
+        .current-user-indicator {
+            color: #007bff;
+            font-size: 1.2em;
+        }
+        .error { color: #dc3545; font-weight: bold; }
+        .success { color: #28a745; font-weight: bold; }
+        .info { color: #17a2b8; }
+
+        /* Animation for section visibility */
+        .section.show {
+            animation: fadeIn 0.5s forwards ease-out;
+            display: block; /* Ensure it's displayed during animation */
+        }
+        .section.hide {
+            animation: fadeOut 0.3s forwards ease-in;
+            pointer-events: none; /* Disable interaction during fade out */
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Secure File Transfer Client</h1>
+
+        <div class="section" id="serverAccessSection">
+            <h2><i class="fas fa-server"></i> Server Access</h2>
+            <p>Enter server password to get your authentication keys.</p>
+            <input type="password" id="serverPassword" placeholder="Server Password">
+            <button onclick="requestServerKeys()"><i class="fas fa-key"></i> Get Server Keys</button>
+            <p id="keysDisplay"></p>
+        </div>
+
+        <div class="section" id="authenticationSection">
+            <h2><i class="fas fa-user-shield"></i> Client Authentication</h2>
+            <input type="text" id="usernameInput" placeholder="Enter your username (e.g., Alice)">
+            <input type="text" id="primaryKeyInput" placeholder="Primary Key (received from server)" readonly>
+            <input type="text" id="secondaryKeyInput" placeholder="Secondary Key (received from server)" readonly>
+            <button onclick="authenticateClient()"><i class="fas fa-sign-in-alt"></i> Authenticate as Client</button>
+        </div>
+
+        <div class="section" id="clientListSection">
+            <h2><i class="fas fa-users"></i> Connected Clients</h2>
+            <button onclick="requestClientList()"><i class="fas fa-sync-alt"></i> Refresh Client List</button>
+            <div id="clientList" class="client-list"></div>
+        </div>
+
+        <div class="section" id="fileTransferSection">
+            <h2><i class="fas fa-exchange-alt"></i> File Transfer</h2>
+            <input type="text" id="recipientId" placeholder="Enter recipient Client ID (username)">
+            <input type="file" id="fileInput">
+            <button onclick="sendFileRequest()"><i class="fas fa-paper-plane"></i> Request File Transfer</button>
+            <button onclick="sendAcceptedFile()"><i class="fas fa-check-circle"></i> Accept Transfer (if requested)</button>
+        </div>
+
+        <div class="section">
+            <h2><i class="fas fa-comment-dots"></i> Messages</h2>
+            <div id="messageBox" class="message-box"></div>
+            <button onclick="clearMessages()" style="margin-top: 15px;"><i class="fas fa-broom"></i> Clear Messages</button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentClientId = null;
+        let myPrimaryKey = null;
+        let mySecondaryKey = null;
+        let receivedTransferRequest = null;
+
+        const serverAccessSection = document.getElementById('serverAccessSection');
+        const authenticationSection = document.getElementById('authenticationSection');
+        const clientListSection = document.getElementById('clientListSection');
+        const fileTransferSection = document.getElementById('fileTransferSection');
+        
+        const messageBox = document.getElementById('messageBox');
+        const clientListDiv = document.getElementById('clientList');
+        const keysDisplay = document.getElementById('keysDisplay');
+
+        // Initial state: Only server access visible
+        serverAccessSection.style.display = 'block';
+        serverAccessSection.classList.add('show');
+
+        function appendMessage(message, type = '') {
+            const p = document.createElement('p');
+            p.textContent = message;
+            if (type) p.classList.add(type);
+            messageBox.appendChild(p);
+            messageBox.scrollTop = messageBox.scrollHeight;
+        }
+
+        function clearMessages() {
+            messageBox.innerHTML = '';
+            appendMessage('Messages cleared.', 'info');
+        }
+
+        // --- Base64 Helper Functions for ArrayBuffer ---
+        function arrayBufferToBase64(buffer) {
+            let binary = '';
+            const bytes = new Uint8Array(buffer);
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+
+        // --- Socket.IO Event Handlers ---
+        socket.on('connect', () => {
+            appendMessage('Connected to server.', 'success');
+        });
+
+        socket.on('disconnect', () => {
+            appendMessage('Disconnected from server.', 'error');
+            currentClientId = null;
+            myPrimaryKey = null;
+            mySecondaryKey = null;
+            
+            // Reset UI to initial state
+            serverAccessSection.style.display = 'block';
+            serverAccessSection.classList.add('show');
+            authenticationSection.classList.remove('show');
+            authenticationSection.style.display = 'none';
+            clientListSection.classList.remove('show');
+            clientListSection.style.display = 'none';
+            fileTransferSection.classList.remove('show');
+            fileTransferSection.style.display = 'none';
+
+            document.getElementById('serverPassword').readOnly = false;
+            document.getElementById('usernameInput').readOnly = false;
+            document.getElementById('primaryKeyInput').value = '';
+            document.getElementById('secondaryKeyInput').value = '';
+            document.getElementById('usernameInput').value = '';
+            keysDisplay.textContent = '';
+        });
+
+        socket.on('server_message', (data) => {
+            appendMessage(`Server: ${data.message}`);
+        });
+
+        socket.on('authentication_result', (data) => {
+            if (data.success) {
+                appendMessage(data.message, 'success');
+                currentClientId = data.client_id;
+                
+                // Hide Authentication, Show Client List and File Transfer
+                authenticationSection.classList.add('hide'); // Start fade out
+                authenticationSection.addEventListener('animationend', function handler() {
+                    authenticationSection.style.display = 'none';
+                    authenticationSection.classList.remove('hide');
+                    authenticationSection.removeEventListener('animationend', handler);
+
+                    clientListSection.classList.add('show');
+                    fileTransferSection.classList.add('show');
+                    requestClientList();
+                });
+                
+            } else {
+                appendMessage(`Authentication Failed: ${data.message}`, 'error');
+                if (data.message.includes('Username already taken')) {
+                    document.getElementById('usernameInput').readOnly = false;
+                }
+            }
+        });
+
+        socket.on('update_client_list', (clients) => {
+            clientListDiv.innerHTML = '<h3>Active Clients:</h3>';
+            if (clients.length === 0) {
+                clientListDiv.innerHTML += '<p>No other authenticated clients.</p>';
+            } else {
+                const ul = document.createElement('ul');
+                clients.forEach(client => {
+                    const li = document.createElement('li');
+                    li.classList.add('client-item');
+                    if (client === currentClientId) {
+                        li.innerHTML = `<i class="fas fa-arrow-right current-user-indicator"></i> <strong>${client} (You)</strong>`;
+                    } else {
+                        li.innerHTML = `<i class="fas fa-arrow-right"></i> <strong>${client}</strong>`;
+                    }
+                    ul.appendChild(li);
+                });
+                clientListDiv.appendChild(ul);
+            }
+        });
+
+        socket.on('file_transfer_request', (data) => {
+            receivedTransferRequest = data;
+            appendMessage(`Incoming file transfer request from ${data.sender_username} (${data.sender_id}).`);
+            appendMessage(`Sender's Primary Key for verification: ${data.sender_primary_key}. Please verify and click 'Accept Transfer'.`, 'info');
+        });
+
+        socket.on('transfer_ready', (data) => {
+            appendMessage(`Transfer path ready between ${data.sender_id} and ${data.receiver_id}.`);
+            if (data.sender_id === currentClientId) {
+                appendMessage('Starting file upload...', 'info');
+                sendFileChunks(data.receiver_id);
+            }
+        });
+        
+        let receivedFileBuffers = {};
+        let receivedFileMetadata = {};
+
+        socket.on('file_download_chunk', (data) => {
+            const { sender_id, filename, chunk, offset, total_chunks } = data;
+            if (!receivedFileBuffers[filename]) {
+                receivedFileBuffers[filename] = new Array(total_chunks);
+                receivedFileMetadata[filename] = {
+                    sender_id: sender_id,
+                    filename: filename,
+                    total_chunks: total_chunks
+                };
+            }
+            
+            const arrayBufferChunk = base64ToArrayBuffer(chunk);
+            receivedFileBuffers[filename][offset] = arrayBufferChunk;
+
+            appendMessage(`Receiving chunk ${offset + 1}/${total_chunks} for ${filename} from ${sender_id}.`);
+
+            let allChunksReceived = true;
+            for (let i = 0; i < total_chunks; i++) {
+                if (!receivedFileBuffers[filename][i]) {
+                    allChunksReceived = false;
+                    break;
+                }
+            }
+
+            if (allChunksReceived) {
+                appendMessage(`All chunks received for ${filename}. Assembling file...`, 'success');
+                const completeBlob = new Blob(receivedFileBuffers[filename]);
+                const url = URL.createObjectURL(completeBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.textContent = `Download ${filename}`;
+                a.style.display = 'block';
+                a.style.marginTop = '10px';
+                a.style.backgroundColor = '#28a745'; /* Green download button */
+                a.style.color = 'white';
+                a.style.padding = '10px';
+                a.style.textAlign = 'center';
+                a.style.borderRadius = '5px';
+                a.style.textDecoration = 'none';
+                a.style.cursor = 'pointer';
+                messageBox.appendChild(a);
+                messageBox.appendChild(document.createElement('br'));
+                // URL.revokeObjectURL(url); // Don't revoke immediately, let user download
+
+                delete receivedFileBuffers[filename];
+                delete receivedFileMetadata[filename];
+            }
+        });
+
+
+        // --- Client Actions ---
+        async function requestServerKeys() {
+            const serverPassword = document.getElementById('serverPassword').value;
+            try {
+                const response = await fetch('/request_keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `password=${encodeURIComponent(serverPassword)}`
+                });
+                const data = await response.json();
+                if (data.success === false) {
+                    appendMessage(data.message, 'error');
+                    keysDisplay.textContent = '';
+                    return;
+                }
+                
+                myPrimaryKey = data.primary_key;
+                mySecondaryKey = data.secondary_key;
+                
+                keysDisplay.textContent = `Keys received. Your Primary Key: ${myPrimaryKey}, Your Secondary Key: ${mySecondaryKey}.`;
+                document.getElementById('primaryKeyInput').value = myPrimaryKey;
+                document.getElementById('secondaryKeyInput').value = mySecondaryKey;
+                appendMessage('Successfully received keys from server. Please authenticate as a client.', 'success');
+                
+                // Transition UI: Hide Server Access, Show Client Authentication
+                serverAccessSection.classList.add('hide'); // Start fade out
+                serverAccessSection.addEventListener('animationend', function handler() {
+                    serverAccessSection.style.display = 'none';
+                    serverAccessSection.classList.remove('hide'); // Clean up class
+                    serverAccessSection.removeEventListener('animationend', handler); // Remove listener
+
+                    authenticationSection.classList.add('show'); // Start fade in
+                });
+                document.getElementById('serverPassword').readOnly = true;
+
+            } catch (error) {
+                appendMessage(`Error requesting keys: ${error.message}`, 'error');
+            }
+        }
+
+        function authenticateClient() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const primaryKey = parseInt(document.getElementById('primaryKeyInput').value);
+            const secondaryKey = parseInt(document.getElementById('secondaryKeyInput').value);
+
+            if (!username) {
+                appendMessage('Please enter a username.', 'error');
+                return;
+            }
+            if (isNaN(primaryKey) || isNaN(secondaryKey)) {
+                appendMessage('Authentication keys are missing or invalid. Please request keys first.', 'error');
+                return;
+            }
+
+            socket.emit('authenticate_client', {
+                username: username,
+                primary_key: primaryKey,
+                secondary_key: secondaryKey
+            });
+        }
+
+        function requestClientList() {
+            if (currentClientId) {
+                socket.emit('request_client_list');
+            } else {
+                // This shouldn't happen if UI flow is followed
+                appendMessage('You must be authenticated to see the client list.', 'warning');
+            }
+        }
+
+        function sendFileRequest() {
+            if (!currentClientId) {
+                appendMessage('You must be authenticated to send files.', 'error');
+                return;
+            }
+
+            const recipientId = document.getElementById('recipientId').value.trim();
+            const fileInput = document.getElementById('fileInput');
+            
+            if (!recipientId) {
+                appendMessage('Please enter a recipient Client ID (username).', 'error');
+                return;
+            }
+            if (fileInput.files.length === 0) {
+                appendMessage('Please select a file to send.', 'error');
+                return;
+            }
+            if (recipientId === currentClientId) {
+                appendMessage('Cannot send file to yourself.', 'error');
+                return;
+            }
+
+            socket.emit('request_file_transfer', {
+                receiver_id: recipientId
+            });
+        }
+
+        function sendAcceptedFile() {
+            if (!currentClientId) {
+                appendMessage('You must be authenticated to accept transfers.', 'error');
+                return;
+            }
+
+            if (!receivedTransferRequest) {
+                appendMessage('No pending file transfer request to accept.', 'error');
+                return;
+            }
+            
+            const senderPrimaryKey = receivedTransferRequest.sender_primary_key;
+            if (myPrimaryKey !== senderPrimaryKey) { 
+                appendMessage(`Error: Primary key mismatch! Sender's PK: ${senderPrimaryKey}, Your PK: ${myPrimaryKey}. Aborting acceptance.`, 'error');
+                receivedTransferRequest = null; 
+                return;
+            }
+            
+            appendMessage(`Primary keys match! Accepting transfer from ${receivedTransferRequest.sender_id}.`, 'success');
+
+            socket.emit('accept_file_transfer', {
+                sender_id: receivedTransferRequest.sender_id,
+                sender_primary_key: senderPrimaryKey 
+            });
+            receivedTransferRequest = null; 
+        }
+        
+        const CHUNK_SIZE = 1024 * 64; 
+
+        async function sendFileChunks(receiverId) {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) {
+                appendMessage('No file selected to send.', 'error');
+                return;
+            }
+
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            let offset = 0;
+
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                const chunk = event.target.result;
+                const base64Chunk = arrayBufferToBase64(chunk);
+                
+                socket.emit('file_upload_chunk', {
+                    receiver_id: receiverId,
+                    filename: file.name,
+                    chunk: base64Chunk,
+                    offset: offset,
+                    total_chunks: totalChunks
+                });
+
+                offset++;
+                if (offset < totalChunks) {
+                    readNextChunk();
+                } else {
+                    appendMessage(`Finished sending ${file.name}.`, 'success');
+                }
+            };
+
+            reader.onerror = function(event) {
+                appendMessage(`Error reading file: ${event.target.error}`, 'error');
+            };
+
+            function readNextChunk() {
+                const start = offset * CHUNK_SIZE;
+                const end = Math.min(file.size, start + CHUNK_SIZE);
+                const blob = file.slice(start, end);
+                reader.readAsArrayBuffer(blob);
+            }
+
+            readNextChunk(); 
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Transfer Server Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        p { margin-bottom: 10px; }
+        .info { color: #007bff; }
+        .warning { color: orange; }
+        .error { color: red; }
+        .client-list-dashboard {
+            border: 1px solid #cceeff;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f7fcff;
+            margin-top: 20px;
+        }
+        .client-list-dashboard ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .client-list-dashboard li {
+            padding: 5px 0;
+            border-bottom: 1px dashed #eee;
+            font-size: 1.1em;
+            color: #555;
+        }
+        .client-list-dashboard li:last-child {
+            border-bottom: none;
+        }
+        .no-clients {
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>File Transfer Server Dashboard</h1>
+        <p class="info">Server is running and listening for connections.</p>
+        
+        <h2>Global Network Keys (Generated on Server Startup)</h2>
+        <p><strong>Polynomial Equation:</strong> ${{ polynomial_equation }} = 0$</p>
+        <p><strong>Primary Key:</strong> ${{ primary_key }}</p>
+        <p><strong>Secondary Keys:</strong> ${{ secondary_keys }}</p>
+        <p class="info">Clients will receive the Primary Key and ONE of the Secondary Keys upon successful password entry.</p>
+
+        <div class="client-list-dashboard">
+            <h2>Active Authenticated Clients</h2>
+            <div id="activeClientsList">
+                <p class="no-clients">Loading active clients...</p>
+            </div>
+        </div>
+
+        <p class="warning" style="margin-top: 20px;">**Important Security Note:** This implementation is for demonstration. It lacks robust security features, error handling, and scalable file transfer mechanisms. Do not use in production without significant enhancements.</p>
+        <p>Access client page at: <a href="http://YOUR_SERVER_IP:5000/client.html" target="_blank">http://YOUR_SERVER_IP:5000/client.html</a> (replace YOUR_SERVER_IP)</p>
+        <p>File uploads are temporarily stored in the `uploads/` directory on the server.</p>
+    </div>
+
+    <script>
+        const socket = io();
+        const activeClientsListDiv = document.getElementById('activeClientsList');
+
+        socket.on('connect', () => {
+            console.log('Server dashboard connected to Socket.IO.');
+            // Request initial list if needed, though server automatically sends on connect
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Server dashboard disconnected from Socket.IO.');
+            activeClientsListDiv.innerHTML = '<p class="error">Disconnected from server. Client list not live.</p>';
+        });
+
+        socket.on('update_server_dashboard_client_list', (clients) => {
+            activeClientsListDiv.innerHTML = ''; // Clear previous list
+            if (clients.length === 0) {
+                activeClientsListDiv.innerHTML = '<p class="no-clients">No authenticated clients currently active.</p>';
+            } else {
+                const ul = document.createElement('ul');
+                clients.forEach(client => {
+                    const li = document.createElement('li');
+                    li.textContent = client;
+                    ul.appendChild(li);
+                });
+                activeClientsListDiv.appendChild(ul);
+            }
+        });
+
+        // Add a general message listener for debugging if needed
+        socket.on('server_message', (data) => {
+            console.log('Server Message (Dashboard):', data.message);
+        });
+    </script>
+</body>
+</html>
